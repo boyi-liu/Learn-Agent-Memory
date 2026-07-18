@@ -6,6 +6,7 @@
 ## 目录结构
 
 ```
+├── main.py                完整对话 harness：双层记忆 + while 循环
 ├── config.yaml            你的 DeepSeek key（私密，已被 .gitignore 挡住）
 ├── config.example.yaml    配置模板（可分享）
 ├── memory/                记忆策略（本项目的重点）
@@ -58,6 +59,25 @@ python3 -m venv .venv
 - **embedding 模型**：`sentence-transformers`（多语言，支持中文），把文字变成向量
 - **向量数据库**：`memory/vector_store.py`，手写的 numpy 余弦相似度检索，
   数据以 JSON 落盘到 `.data/vector_store.json`（可直接打开看：文字 + 一串数字）
+
+## 完整对话 harness（main.py）
+
+把所有零件组装成一个能连续对话、且**跨会话记忆**的 agent，用一个 `while` 循环驱动。
+采用真实 agent 常见的**双层记忆**：
+
+- **短期记忆**：本轮会话最近几句原文，保证多轮对话连贯
+- **长期记忆**：RAG 向量库，每句都存、持久化到 `.data/main_memory.json`；
+  每轮回答前用当前输入检索最相关的旧记忆
+
+```bash
+.venv/bin/python main.py
+```
+
+每一轮的核心流程：`检索长期记忆 → 组装 prompt(系统设定 + 检索记忆 + 最近几句 + 本次输入) → 调模型 → 写回短期与长期记忆`。
+斜杠命令：`/mem` 查看记忆条数、`/clear` 清空长期记忆、`/help` 帮助、`/exit` 退出。
+
+> 验证长期记忆：先运行一次告诉它一个事实并 `/exit`，再重新运行、问它那个事实——
+> 新进程短期记忆为空，仍能答对，说明记忆确实跨会话保存在了磁盘上。
 
 ## 四种记忆一览
 
