@@ -1,0 +1,12 @@
+# 私密配置：绝对不要提交（里面有 API key）
+config.yaml
+
+# 运行时生成的记忆文件
+.data/
+
+# 虚拟环境（RAG 依赖装在这里，很大，不要提交）
+.venv/
+
+# Python 缓存
+__pycache__/
+*.pyc

@@ -1,0 +1,7 @@
+# 配置模板。使用方法：
+#   1. 复制本文件为 config.yaml
+#   2. 在 config.yaml 里填上你真正的 key
+# 本文件不含真 key，可以安全地上传 / 分享。
+
+deepseek_api_key: "sk-你的key填这里"
+deepseek_model: "deepseek-chat"
