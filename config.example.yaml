@@ -5,3 +5,10 @@
 
 deepseek_api_key: "sk-你的key填这里"
 deepseek_model: "deepseek-chat"
+
+# harness 用哪种记忆：naive | window | summary | rag | managed
+memory:
+  backend: managed
+  recent_window: 6
+  retrieve_top_k: 3
+  summary_keep_recent: 2

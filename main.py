@@ -1,24 +1,20 @@
 """
-main.py —— 一个真正支持记忆的对话 harness。
+main.py —— 一个真正支持记忆的对话 harness，用一个 while 循环不停对话。
 
-它把整个项目的零件组装成一个可交互的 agent，用一个 while 循环不停对话。
-记忆采用真实 agent 常见的【双层结构】：
+用哪种记忆由 config.yaml 的 memory.backend 决定（naive/window/summary/rag/managed），
+主循环完全不关心底层是哪种 —— 全靠 harness_memory 把它们统一成 context()/record() 两个动作。
 
-    短期记忆（recent）：本轮会话最近几句原文，保证多轮对话连贯。
-    长期记忆（RagMemory）：每句都 embed 存进向量库、跨会话持久化到磁盘；
-                           每轮回答前，用当前问题去检索最相关的几条旧记忆。
-
-每一轮的处理流程（就是记忆系统的核心）：
+每一轮的处理流程：
     1. 读用户输入
-    2. 用输入去长期记忆里【检索】相关记忆
-    3. 组装 prompt = 系统设定 + 检索到的长期记忆 + 最近几句 + 本次输入
-    4. 调 DeepSeek 生成回复
-    5. 把这轮的 user / assistant 都【写回】短期 + 长期记忆
+    2. backend.context(输入)  取要塞进 prompt 的记忆（历史 或 召回到的长期记忆）
+    3. 组装 prompt = 系统设定 + 记忆 + 本次输入，调 DeepSeek
+    4. backend.record(输入, 回复)  把这一轮存回记忆
 
-斜杠命令：/mem 查看检索、/clear 清空长期记忆、/help 帮助、/exit 退出。
+斜杠命令：/mem 看记忆条数、/clear 清空、/help 帮助、/exit 退出。
 
-⚠️ 用虚拟环境运行（长期记忆依赖 embedding 模型）：
+⚠️ 若 backend 选了 rag/managed，需要用虚拟环境运行（要加载 embedding 模型）：
        .venv/bin/python main.py
+   选 naive/window/summary 则不需要模型，普通 python3 也行。
 """
 
 import sys
@@ -27,34 +23,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from llm import has_key, deepseek_llm
-from memory import RagMemory
-
-DATA_DIR = ROOT / ".data"
-RECENT_WINDOW = 6          # 短期记忆保留最近多少条消息（约 3 轮问答）
-RETRIEVE_TOP_K = 3         # 每轮从长期记忆检索几条
+from llm import has_key, deepseek_llm, get_config
+from harness_memory import build_memory
 
 SYSTEM_PROMPT = (
-    "你是一个拥有长期记忆的私人助理。回答时请参考下面提供的“相关记忆”"
+    "你是一个拥有记忆的私人助理。回答时请参考下面提供的记忆"
     "（那是你过去和用户交流时记住的事），让回答更贴合用户。"
     "如果记忆里没有相关信息，就正常回答，不要编造。"
 )
-
-
-def build_messages(system_prompt, retrieved, recent, user_input):
-    """把系统设定 + 检索到的长期记忆 + 最近对话 + 本次输入拼成 messages。"""
-    messages = [{"role": "system", "content": system_prompt}]
-
-    if retrieved:
-        memory_text = "\n".join(f"- {r['content']}" for r in retrieved)
-        messages.append({
-            "role": "system",
-            "content": "【相关记忆】（从长期记忆检索到，可能有用）：\n" + memory_text,
-        })
-
-    messages.extend(recent)                               # 最近几句原文
-    messages.append({"role": "user", "content": user_input})
-    return messages
 
 
 def main():
@@ -62,13 +38,12 @@ def main():
         print("未配置 DeepSeek key。请在 config.yaml 填 deepseek_api_key 后再运行。")
         return
 
-    print("加载长期记忆（首次会下载 embedding 模型）……")
-    long_term = RagMemory(persist_path=str(DATA_DIR / "main_memory.json"),
-                          top_k=RETRIEVE_TOP_K)
-    recent = []   # 短期记忆：本进程内的最近对话
+    mem_cfg = get_config().get("memory", {})
+    print(f"正在按 config.yaml 启动记忆后端：{mem_cfg.get('backend', 'managed')} ……")
+    backend = build_memory(mem_cfg, llm_fn=deepseek_llm)
 
-    print("\n记忆 agent 已就绪。直接输入对话；/help 看命令，/exit 退出。")
-    print(f"（长期记忆已有 {long_term.store.count()} 条，跨会话保留）\n")
+    print(f"\n记忆 agent 已就绪（后端：{backend.name}）。/help 看命令，/exit 退出。")
+    print(f"（当前记忆已有 {backend.count()} 条）\n")
 
     while True:
         try:
@@ -82,34 +57,28 @@ def main():
 
         # ---- 斜杠命令 ----
         if user_input in ("/exit", "/quit"):
-            print("再见！长期记忆已保存在 .data/main_memory.json。")
+            print("再见！记忆已保存在 .data/ 下。")
             break
         if user_input == "/help":
-            print("命令：/mem 查看本轮检索到的记忆 | /clear 清空长期记忆 | /exit 退出")
+            print("命令：/mem 查看记忆条数 | /clear 清空记忆 | /exit 退出")
             continue
         if user_input == "/clear":
-            long_term.clear()
-            recent.clear()
-            print("已清空长期记忆和当前会话。")
+            backend.clear()
+            print("已清空记忆。")
             continue
         if user_input == "/mem":
-            print(f"长期记忆共 {long_term.store.count()} 条；短期记忆 {len(recent)} 条。")
+            print(f"当前记忆共 {backend.count()} 条。")
             continue
 
-        # ---- 1) 检索长期记忆 ----
-        retrieved = long_term.get_context(user_input)
+        # ---- 一轮对话：取记忆 -> 组装 -> 生成 -> 存回 ----
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.extend(backend.context(user_input))          # 记忆（历史/召回）
+        messages.append({"role": "user", "content": user_input})
 
-        # ---- 2) 组装 prompt 并调用模型 ----
-        messages = build_messages(SYSTEM_PROMPT, retrieved, recent, user_input)
         reply = deepseek_llm(messages)
         print(f"助手 > {reply}\n")
 
-        # ---- 3) 写回记忆（短期 + 长期）----
-        recent.append({"role": "user", "content": user_input})
-        recent.append({"role": "assistant", "content": reply})
-        recent[:] = recent[-RECENT_WINDOW:]          # 短期只留最近 N 条
-        long_term.add("user", user_input)            # 长期永久留存
-        long_term.add("assistant", reply)
+        backend.record(user_input, reply)
 
 
 if __name__ == "__main__":

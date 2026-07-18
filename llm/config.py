@@ -40,3 +40,8 @@ def has_key() -> bool:
     """是否配好了可用的 key（占位符不算）。"""
     key = get_api_key()
     return bool(key) and key != _PLACEHOLDER
+
+
+def get_config() -> dict:
+    """返回 config.yaml 的完整内容（供 main.py 读取 memory 等其它配置）。"""
+    return _load_yaml()

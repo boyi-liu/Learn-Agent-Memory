@@ -6,8 +6,9 @@
 ## 目录结构
 
 ```
-├── main.py                完整对话 harness：双层记忆 + while 循环
-├── config.yaml            你的 DeepSeek key（私密，已被 .gitignore 挡住）
+├── main.py                完整对话 harness（while 循环）；记忆后端由 config 决定
+├── harness_memory.py      把各种记忆统一成 context()/record() 接口 + 工厂
+├── config.yaml            你的 key + memory 后端选择（私密，已被 .gitignore 挡住）
 ├── config.example.yaml    配置模板（可分享）
 ├── memory/                记忆策略（本项目的重点）
 │   ├── base.py            公共基类：add / 存盘 / 读盘
@@ -67,21 +68,35 @@ python3 -m venv .venv
 ## 完整对话 harness（main.py）
 
 把所有零件组装成一个能连续对话、且**跨会话记忆**的 agent，用一个 `while` 循环驱动。
-采用真实 agent 常见的**双层记忆**：
+**用哪种记忆由 `config.yaml` 决定**，主循环通过 `harness_memory.py` 把各后端统一成
+`context()`（取记忆）/ `record()`（存记忆）两个动作，所以换记忆只改配置、不动代码。
 
-- **短期记忆**：本轮会话最近几句原文，保证多轮对话连贯
-- **长期记忆**：RAG 向量库，每句都存、持久化到 `.data/main_memory.json`；
-  每轮回答前用当前输入检索最相关的旧记忆
-
-```bash
-.venv/bin/python main.py
+```yaml
+# config.yaml
+memory:
+  backend: managed        # naive | window | summary | rag | managed
+  recent_window: 6        # 短期记忆 / window 保留的条数
+  retrieve_top_k: 3       # rag / managed 每轮召回几条
 ```
 
-每一轮的核心流程：`检索长期记忆 → 组装 prompt(系统设定 + 检索记忆 + 最近几句 + 本次输入) → 调模型 → 写回短期与长期记忆`。
-斜杠命令：`/mem` 查看记忆条数、`/clear` 清空长期记忆、`/help` 帮助、`/exit` 退出。
+| backend | 记忆行为 | 需要模型 |
+|---|---|---|
+| `naive` | 全量历史全塞回 | 否 |
+| `window` | 只保留最近 N 条 | 否 |
+| `summary` | 旧对话压成摘要 + 最近几条 | 否 |
+| `rag` | 每句都存，按相似度召回 + 短期窗口 | 是 |
+| `managed` | rag + 提炼/去重/更新 + 混合召回（推荐） | 是 |
 
-> 验证长期记忆：先运行一次告诉它一个事实并 `/exit`，再重新运行、问它那个事实——
-> 新进程短期记忆为空，仍能答对，说明记忆确实跨会话保存在了磁盘上。
+```bash
+.venv/bin/python main.py       # 选了 rag/managed 需要虚拟环境（加载 embedding 模型）
+python3 main.py                # 选 naive/window/summary 则不需要模型
+```
+
+每一轮：`backend.context(输入) → 组装 prompt(系统设定 + 记忆 + 本次输入) → 调模型 → backend.record(输入, 回复)`。
+斜杠命令：`/mem` 查看记忆条数、`/clear` 清空、`/help` 帮助、`/exit` 退出。
+
+> 验证跨会话记忆（rag/managed）：先运行一次告诉它一个事实并 `/exit`，再重新运行、问它那个事实——
+> 新进程短期记忆为空仍能答对，说明记忆确实跨会话存到了磁盘上。
 
 ## 主动记忆管理（MemoryManager）
 
