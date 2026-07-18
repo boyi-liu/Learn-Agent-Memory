@@ -29,16 +29,36 @@ class VectorStore:
         self.vectors: List[List[float]] = []   # 每条是一串数字（向量）
         self.documents: List[str] = []         # 每条对应的原文
         self.metadatas: List[dict] = []        # 每条的附加信息，如 {"role": ...}
+        self.seq = 0                           # 单调自增计数器，保证 id 永不重复
         if path:
             self._load()
 
     # ---------- 存 ----------
-    def add(self, id: str, vector: List[float], document: str, metadata: dict = None) -> None:
+    def add(self, vector: List[float], document: str, metadata: dict = None,
+            id: str = None) -> str:
+        # 不给 id 就自动生成一个永不重复的（删除后再新增也不会撞号）
+        if id is None:
+            id = f"mem-{self.seq}"
+            self.seq += 1
         self.ids.append(id)
         self.vectors.append(list(map(float, vector)))
         self.documents.append(document)
         self.metadatas.append(metadata or {})
         self._save()
+        return id
+
+    # ---------- 删（更新/遗忘的基础）----------
+    def delete(self, ids) -> int:
+        """按 id 删除若干条，返回删掉的条数。"""
+        drop = {ids} if isinstance(ids, str) else set(ids)
+        keep = [i for i, _id in enumerate(self.ids) if _id not in drop]
+        removed = len(self.ids) - len(keep)
+        self.ids = [self.ids[i] for i in keep]
+        self.vectors = [self.vectors[i] for i in keep]
+        self.documents = [self.documents[i] for i in keep]
+        self.metadatas = [self.metadatas[i] for i in keep]
+        self._save()
+        return removed
 
     # ---------- 查（向量库的灵魂）----------
     def query(self, vector: List[float], top_k: int = 3) -> List[Dict]:
@@ -81,6 +101,7 @@ class VectorStore:
         if parent:
             os.makedirs(parent, exist_ok=True)
         data = {
+            "seq": self.seq,
             "ids": self.ids,
             "vectors": self.vectors,
             "documents": self.documents,
@@ -97,3 +118,5 @@ class VectorStore:
             self.vectors = data.get("vectors", [])
             self.documents = data.get("documents", [])
             self.metadatas = data.get("metadatas", [])
+            # 老数据没存 seq 时，从当前条数起步，避免与旧 id 冲突
+            self.seq = data.get("seq", len(self.ids))

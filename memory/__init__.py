@@ -6,6 +6,7 @@ from .sliding_window import SlidingWindowMemory
 from .summary import SummaryMemory
 from .vector import VectorMemory
 from .vector_store import VectorStore
+from .memory_manager import MemoryManager
 
 __all__ = [
     "BaseMemory",
@@ -14,6 +15,7 @@ __all__ = [
     "SummaryMemory",
     "VectorMemory",
     "VectorStore",
+    "MemoryManager",
     "RagMemory",
 ]
 

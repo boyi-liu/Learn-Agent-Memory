@@ -101,7 +101,6 @@ def main():
 
         # ---- 2) 组装 prompt 并调用模型 ----
         messages = build_messages(SYSTEM_PROMPT, retrieved, recent, user_input)
-        print(messages)
         reply = deepseek_llm(messages)
         print(f"助手 > {reply}\n")
 

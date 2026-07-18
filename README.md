@@ -15,14 +15,18 @@
 │   ├── sliding_window.py  策略一：滑动窗口
 │   ├── summary.py         策略二：摘要压缩
 │   ├── vector.py          策略三：向量检索(玩具版RAG)
-│   ├── vector_store.py    手搓的向量库（numpy 余弦检索 + JSON 落盘）
-│   └── rag_memory.py      真实RAG：sentence-transformers + 手搓向量库
+│   ├── vector_store.py    手搓的向量库（numpy 余弦检索 + 增删 + JSON 落盘）
+│   ├── rag_memory.py      真实RAG：sentence-transformers + 手搓向量库
+│   └── memory_manager.py  主动记忆管理：提炼 + 去重/更新（ADD/SKIP/UPDATE）
 ├── llm/                   模型调用
 │   ├── config.py          读 config.yaml（或环境变量）
 │   └── deepseek.py        DeepSeek 调用（OpenAI 兼容）
 └── demos/                 可运行示例
     ├── agent_demo.py      记忆 + 真模型跑一轮对话
-    └── compare_demo.py    四种记忆同台对比
+    ├── compare_demo.py    四种记忆同台对比
+    ├── rag_demo.py        真实 RAG 检索问答
+    ├── manager_demo.py    主动记忆管理：提炼/去重/更新演示
+    └── hybrid_demo.py     混合检索：相似度 + 新近度 + 重要性
 ```
 
 ## 快速开始
@@ -78,6 +82,50 @@ python3 -m venv .venv
 
 > 验证长期记忆：先运行一次告诉它一个事实并 `/exit`，再重新运行、问它那个事实——
 > 新进程短期记忆为空，仍能答对，说明记忆确实跨会话保存在了磁盘上。
+
+## 主动记忆管理（MemoryManager）
+
+前面的记忆都是**被动**的：来一句存一句、只增不改，很快堆满噪音，还会因旧事实过期而自相矛盾。
+`memory/memory_manager.py` 在 `RagMemory` 外面加一层**主动加工**，让系统从
+「会检索的聊天记录」跨到「会自我整理的记忆」：
+
+- **提炼(Write)**：每轮对话后让 LLM 判断有没有值得长期记的**事实**，并给每条评**重要性 1-10**，只存事实、忽略寒暄
+- **消解(Reconcile)**：入库前先按相似度检索旧记忆，让 LLM 判断
+  `ADD`（新知识）/ `SKIP`（重复）/ `UPDATE`（取代旧记忆，如搬家、换宠物）
+- **召回(Recall)**：进阶检索，混合打分（见下一节）
+
+它不 import `llm` 包，而是把 llm 函数**注入**进来（`MemoryManager(mem, llm_fn=deepseek_llm)`），
+所以 `memory` 包保持独立、可用假 LLM 测试。运行演示：
+
+```bash
+.venv/bin/python demos/manager_demo.py
+```
+
+> 演示效果：闲聊不进库；「搬到北京」把旧的「住杭州」**更新**掉；重复的「对花生过敏」被 **SKIP**。
+
+## 混合检索（相似度 + 新近度 + 重要性）
+
+分层：`RagMemory` 只负责纯相似度召回（`get_context()`，也供上面的消解去重用）；
+更聪明的检索策略放在管理层 **`MemoryManager.recall()`**，实现经典 Generative Agents 的**混合打分**：
+
+```
+最终分 = w_sim·相似度 + w_recency·新近度 + w_importance·重要性
+```
+
+- **相似度**：与查询的语义接近程度（余弦）
+- **新近度**：越新越高，按 `0.5^(age/半衰期)` 指数衰减（`RagMemory.add` 自动记时间戳）
+- **重要性**：这条记忆本身多重要（由 `MemoryManager` 提炼时让 LLM 评的 1-10 分）
+
+采用**两阶段**：先用相似度粗筛候选池，再在池内按混合分重排序。
+
+采用**两阶段**：先用相似度粗筛候选池，再在池内按混合分重排序。运行演示：
+
+```bash
+.venv/bin/python demos/hybrid_demo.py
+```
+
+> 演示效果：查“爱喝什么”，纯相似度把 30 天前的「美式咖啡」排在前；
+> 混合检索靠新近度把 1 小时前的「抹茶拿铁」顶到第一。
 
 ## 四种记忆一览
 
