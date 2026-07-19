@@ -19,7 +19,9 @@
 │   ├── vector_store.py    手搓的向量库（numpy 余弦检索 + 增删 + JSON 落盘）
 │   ├── rag_memory.py      真实RAG：sentence-transformers + 手搓向量库
 │   ├── memory_manager.py  主动记忆管理：提炼 + 去重/更新（ADD/SKIP/UPDATE）+ 混合召回
-│   └── memory_manager_v2.py  在 v1 上加反思归纳：零散事实 → 高层洞见（reflection）
+│   ├── memory_manager_v2.py  在 v1 上加反思归纳：零散事实 → 高层洞见（reflection）
+│   ├── mem0.py            Mem0（向量版）：多轮抽取 + 四操作 ADD/UPDATE/DELETE/NOOP
+│   └── mem0g.py           Mem0g（图版）：抽成三元组存进手搓知识图谱 + 子图检索
 ├── llm/                   模型调用
 │   ├── config.py          读 config.yaml（或环境变量）
 │   └── deepseek.py        DeepSeek 调用（OpenAI 兼容）
@@ -164,6 +166,25 @@ python3 main.py                # 选 naive/window/summary 则不需要模型
 > 且在召回“最近状态如何”时，这条高层洞见排在所有零散事实之前。
 
 在 harness 里用它：把 `config.yaml` 的 `memory.backend` 设为 `managed_v2`。
+
+## Mem0 与 Mem0g（业界记忆系统的核心算法）
+
+`memory_manager.py` 的写入路径其实就是 **Mem0** 的核心：抽取事实 → 检索相似旧记忆 →
+LLM 决定操作。这里把两个变体各实现成一个独立文件：
+
+**`mem0.py` — 向量版 Mem0**。比 `memory_manager` 更完整：
+- 抽取时带**多轮上下文**（能解决“它/那家公司”这类跨轮指代）
+- 完整四操作 **ADD / UPDATE / DELETE / NOOP**（`memory_manager` 缺 DELETE）
+  —— 例：说“我现在不对花生过敏了”，会 DELETE 掉“对花生过敏”这条，而不是新增
+- 检索是纯向量相似度（Mem0 生产版做法）
+
+**`mem0g.py` — 图版 Mem0g**。不存句子，存**知识三元组** `(主体, 关系, 客体)`：
+- 「小明住在杭州」→ `(小明, 居住于, 杭州)`，许多三元组连成一张知识图谱
+- 用手搓的 `GraphStore`（一堆边 + JSON 落盘），**不依赖 Neo4j，也不需要 embedding 模型**
+- 检索：先用 LLM 找出问题里的实体，再返回图中与之相连的子图
+- 更新同样是四操作（搬家 → UPDATE 替换旧边）
+
+> 你的系统整体是个“混血”：**Mem0 式的写入** + **Generative Agents 式的读取**（混合召回 `recall` + 反思 `reflect`）。
 
 ## 四种记忆一览
 

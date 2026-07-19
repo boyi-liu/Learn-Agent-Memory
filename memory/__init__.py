@@ -8,6 +8,8 @@ from .vector import VectorMemory
 from .vector_store import VectorStore
 from .memory_manager import MemoryManager
 from .memory_manager_v2 import MemoryManagerV2
+from .mem0 import Mem0
+from .mem0g import Mem0g, GraphStore
 
 __all__ = [
     "BaseMemory",
@@ -18,6 +20,9 @@ __all__ = [
     "VectorStore",
     "MemoryManager",
     "MemoryManagerV2",
+    "Mem0",
+    "Mem0g",
+    "GraphStore",
     "RagMemory",
 ]
 
