@@ -7,6 +7,7 @@ from .summary import SummaryMemory
 from .vector import VectorMemory
 from .vector_store import VectorStore
 from .memory_manager import MemoryManager
+from .memory_manager_v2 import MemoryManagerV2
 
 __all__ = [
     "BaseMemory",
@@ -16,6 +17,7 @@ __all__ = [
     "VectorMemory",
     "VectorStore",
     "MemoryManager",
+    "MemoryManagerV2",
     "RagMemory",
 ]
 

@@ -18,7 +18,8 @@
 │   ├── vector.py          策略三：向量检索(玩具版RAG)
 │   ├── vector_store.py    手搓的向量库（numpy 余弦检索 + 增删 + JSON 落盘）
 │   ├── rag_memory.py      真实RAG：sentence-transformers + 手搓向量库
-│   └── memory_manager.py  主动记忆管理：提炼 + 去重/更新（ADD/SKIP/UPDATE）
+│   ├── memory_manager.py  主动记忆管理：提炼 + 去重/更新（ADD/SKIP/UPDATE）+ 混合召回
+│   └── memory_manager_v2.py  在 v1 上加反思归纳：零散事实 → 高层洞见（reflection）
 ├── llm/                   模型调用
 │   ├── config.py          读 config.yaml（或环境变量）
 │   └── deepseek.py        DeepSeek 调用（OpenAI 兼容）
@@ -27,7 +28,8 @@
     ├── compare_demo.py    四种记忆同台对比
     ├── rag_demo.py        真实 RAG 检索问答
     ├── manager_demo.py    主动记忆管理：提炼/去重/更新演示
-    └── hybrid_demo.py     混合检索：相似度 + 新近度 + 重要性
+    ├── hybrid_demo.py     混合检索：相似度 + 新近度 + 重要性
+    └── reflection_demo.py 反思归纳：零散事实 → 高层洞见
 ```
 
 ## 快速开始
@@ -86,6 +88,7 @@ memory:
 | `summary` | 旧对话压成摘要 + 最近几条 | 否 |
 | `rag` | 每句都存，按相似度召回 + 短期窗口 | 是 |
 | `managed` | rag + 提炼/去重/更新 + 混合召回（推荐） | 是 |
+| `managed_v2` | managed + 反思归纳（定期把零散事实归纳成高层洞见） | 是 |
 
 ```bash
 .venv/bin/python main.py       # 选了 rag/managed 需要虚拟环境（加载 embedding 模型）
@@ -131,8 +134,6 @@ python3 main.py                # 选 naive/window/summary 则不需要模型
 - **新近度**：越新越高，按 `0.5^(age/半衰期)` 指数衰减（`RagMemory.add` 自动记时间戳）
 - **重要性**：这条记忆本身多重要（由 `MemoryManager` 提炼时让 LLM 评的 1-10 分）
 
-采用**两阶段**：先用相似度粗筛候选池，再在池内按混合分重排序。
-
 采用**两阶段**：先用相似度粗筛候选池，再在池内按混合分重排序。运行演示：
 
 ```bash
@@ -141,6 +142,28 @@ python3 main.py                # 选 naive/window/summary 则不需要模型
 
 > 演示效果：查“爱喝什么”，纯相似度把 30 天前的「美式咖啡」排在前；
 > 混合检索靠新近度把 1 小时前的「抹茶拿铁」顶到第一。
+
+## 反思归纳（MemoryManagerV2）
+
+前面的记忆永远是一层扁平的事实，不会“想通”什么。`memory/memory_manager_v2.py`
+继承 `MemoryManager`，新增 Generative Agents 式的 **reflection**：
+
+- **归纳(reflect)**：把一批相关的底层事实，交给 LLM 抽象成**更高层的洞见**，
+  作为新记忆存入（标 `role=reflection`、记录来源 `sources`、给高重要性）。
+  例：多条「加班」「周末回邮件」→ 归纳出「用户工作压力较大」。
+- **自动触发**：每写入 `reflect_every` 条新记忆自动反思一次（`reflect_every: 0` 关闭）。
+
+记忆因此从一层“事实”长出第二层“洞见”，形成有层次的记忆树；高层洞见信息更密，
+在混合召回里往往比零散事实更容易被选中、也更有用。运行演示：
+
+```bash
+.venv/bin/python demos/reflection_demo.py
+```
+
+> 演示效果：5 条零散事实被归纳成「用户工作压力较大」（溯源 4 条），
+> 且在召回“最近状态如何”时，这条高层洞见排在所有零散事实之前。
+
+在 harness 里用它：把 `config.yaml` 的 `memory.backend` 设为 `managed_v2`。
 
 ## 四种记忆一览
 

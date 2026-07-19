@@ -151,12 +151,21 @@ def build_memory(mem_cfg: dict, llm_fn):
         from memory import RagMemory
         return RagBackend(RagMemory(VECTOR_PATH, top_k=top_k), recent_window, top_k)
 
-    if backend == "managed":
-        from memory import RagMemory, MemoryManager
+    if backend in ("managed", "managed_v2"):
+        from memory import RagMemory
         mem = RagMemory(VECTOR_PATH, top_k=top_k)
-        manager = MemoryManager(mem, llm_fn=llm_fn)
-        return ManagedBackend(manager, recent_window, top_k)
+        if backend == "managed_v2":
+            from memory import MemoryManagerV2
+            manager = MemoryManagerV2(
+                mem, llm_fn=llm_fn, reflect_every=int(mem_cfg.get("reflect_every", 6)))
+        else:
+            from memory import MemoryManager
+            manager = MemoryManager(mem, llm_fn=llm_fn)
+        b = ManagedBackend(manager, recent_window, top_k)
+        if backend == "managed_v2":
+            b.name = "managed_v2（主动管理 + 反思归纳 + 混合召回）"
+        return b
 
     raise ValueError(
         f"未知的 memory backend：{backend!r}。"
-        "可选：naive / window / summary / rag / managed")
+        "可选：naive / window / summary / rag / managed / managed_v2")
