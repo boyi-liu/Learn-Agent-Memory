@@ -25,6 +25,10 @@
 ├── llm/                   模型调用
 │   ├── config.py          读 config.yaml（或环境变量）
 │   └── deepseek.py        DeepSeek 调用（OpenAI 兼容）
+├── eval/                  记忆评估（LoCoMo）
+│   ├── locomo_sample.json LoCoMo 格式小样本（开箱即跑）
+│   ├── locomo10.json      真实 LoCoMo 数据（10 段对话、~2000 题；自备）
+│   └── run_locomo.py      评估器：灌对话 → 检索作答 → LLM判分 → 按类别统计
 └── demos/                 可运行示例
     ├── agent_demo.py      记忆 + 真模型跑一轮对话
     ├── compare_demo.py    四种记忆同台对比
@@ -185,6 +189,33 @@ LLM 决定操作。这里把两个变体各实现成一个独立文件：
 - 更新同样是四操作（搬家 → UPDATE 替换旧边）
 
 > 你的系统整体是个“混血”：**Mem0 式的写入** + **Generative Agents 式的读取**（混合召回 `recall` + 反思 `reflect`）。
+
+## 评估记忆系统（LoCoMo）
+
+怎么知道一个记忆系统好不好？业界主流基准是 **LoCoMo**（超长多会话对话 + 带类别的 QA）。
+`eval/run_locomo.py` 实现了它的评估三步：
+
+1. 把整段多会话对话**灌进**记忆系统
+2. 每个问题：从记忆里**检索** → LLM**作答**
+3. **LLM-as-judge** 判对错，并按**问题类别**分别统计准确率
+
+按类别看是关键：单跳靠直接检索、多跳/时序考验拼信息、对抗题（问对话里没提的事）考验会不会“编”。
+自带 LoCoMo 格式小样本，开箱即跑；真实 `locomo10.json` 用 `--data` 传入即可（格式一致）。
+
+默认读真实数据 `eval/locomo10.json`（很大：10 段对话、每段几百轮、共约 2000 题），
+所以默认只评 `--samples 1` 段、每段 `--limit 10` 题；想全量就把它们设 `0`（会很贵）。
+
+```bash
+# 真实数据，1 段对话、8 题，换后端对比
+python3          eval/run_locomo.py --adapter fullcontext --samples 1 --limit 8
+.venv/bin/python eval/run_locomo.py --adapter rag        --samples 1 --limit 8 --top-k 8
+# 零成本跑通流程：用自带小样本
+.venv/bin/python eval/run_locomo.py --adapter rag --data eval/locomo_sample.json --samples 0
+```
+
+在真实 LoCoMo 上，naive 后端会被打穿——这正是评估的价值。实测一段对话前 8 题：
+`fullcontext` 3/8、`rag` 0/8；多跳题 `fullcontext` 2/3 而 `rag` 0/3，说明**信息在库里、
+瓶颈在检索没召回到**；时序题两者都 0/4（事件日期≠会话日期、标准答案是相对表述，公认最难）。
 
 ## 四种记忆一览
 

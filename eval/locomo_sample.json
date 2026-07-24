@@ -1,0 +1,33 @@
+[
+  {
+    "sample_id": "sample_1",
+    "conversation": {
+      "speaker_a": "小明",
+      "speaker_b": "小红",
+      "session_1_date_time": "2023-05-08 14:00",
+      "session_1": [
+        {"speaker": "小明", "dia_id": "D1:1", "text": "小红，好久不见！我最近领养了一只橘猫，叫咪咪，超级黏人。"},
+        {"speaker": "小红", "dia_id": "D1:2", "text": "哇太可爱了！你不是一直想养猫嘛。你现在还在做后端开发吗？"},
+        {"speaker": "小明", "dia_id": "D1:3", "text": "是啊，还是老本行，后端工程师。对了提醒你，下次聚餐别点花生相关的，我对花生过敏，挺严重的。"},
+        {"speaker": "小红", "dia_id": "D1:4", "text": "记住了，我们一定避开花生！你现在住得离公司远吗？"},
+        {"speaker": "小明", "dia_id": "D1:5", "text": "还行，我在杭州，骑自行车十分钟就到公司了。"}
+      ],
+      "session_2_date_time": "2023-06-15 10:00",
+      "session_2": [
+        {"speaker": "小红", "dia_id": "D2:1", "text": "小明，听说你换工作了？"},
+        {"speaker": "小明", "dia_id": "D2:2", "text": "对，我上个月从杭州搬到北京了，入职了一家叫云图的公司，还是做后端。"},
+        {"speaker": "小红", "dia_id": "D2:3", "text": "恭喜！大城市机会多。我这边刚跑完了人生第一个全程马拉松，累但很爽。"},
+        {"speaker": "小明", "dia_id": "D2:4", "text": "太厉害了，佩服！咪咪也跟着我一起来北京了，适应得还不错。"},
+        {"speaker": "小红", "dia_id": "D2:5", "text": "哈哈，咪咪现在是你的家人了。"}
+      ]
+    },
+    "qa": [
+      {"question": "小明养的猫叫什么名字？", "answer": "咪咪", "evidence": ["D1:1"], "category": 4},
+      {"question": "小明对什么食物过敏？", "answer": "花生", "evidence": ["D1:3"], "category": 4},
+      {"question": "小明是先养的猫，还是先搬到北京的？", "answer": "先养猫，之后才搬到北京", "evidence": ["D1:1", "D2:2"], "category": 2},
+      {"question": "小明现在在哪座城市、哪家公司工作？", "answer": "北京的云图公司", "evidence": ["D2:2"], "category": 1},
+      {"question": "小红完成的全程马拉松大约有多长距离？", "answer": "大约42公里", "evidence": ["D2:3"], "category": 3},
+      {"question": "小明有几个孩子？", "answer": "No information available", "evidence": [], "category": 5}
+    ]
+  }
+]
